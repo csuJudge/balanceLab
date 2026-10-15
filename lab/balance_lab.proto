@@ -1,0 +1,382 @@
+syntax = "proto3";
+option go_package = "balanceLab/lab";
+
+package oj.balancelab;
+
+service BalancelabServer {
+    // Assign 按实验编号分流
+    rpc Assign(AssignReq) returns (AssignRsp) {}
+    // AssignByScene 按场景分流，返回场景下所有命中实验的分配
+    rpc AssignByScene(AssignBySceneReq) returns (AssignRsp) {}
+    // ReportExposure 上报用户在本实验的首次曝光
+    rpc ReportExposure(ReportExposureReq) returns (ReportExposureRsp) {}
+    // AddExperiment 创建实验（含分组），创建后状态为草稿
+    rpc AddExperiment(AddExperimentReq) returns (ExperimentRsp) {}
+    // UpdateExperiment 更新草稿实验（仅草稿可改）
+    rpc UpdateExperiment(UpdateExperimentReq) returns (ExperimentRsp) {}
+    // UpdateExperimentStatus 实验状态流转：启动/暂停/结束
+    rpc UpdateExperimentStatus(UpdateExperimentStatusReq) returns (ExperimentRsp) {}
+    // QueryExperiments 实验列表
+    rpc QueryExperiments(QueryExperimentsReq) returns (QueryExperimentsRsp) {}
+    // QueryExperiment 实验详情（含分组）
+    rpc QueryExperiment(QueryExperimentReq) returns (QueryExperimentRsp) {}
+    // AddWhitelist 批量加白名单（强制指定分组）
+    rpc AddWhitelist(AddWhitelistReq) returns (ExperimentRsp) {}
+    // RemoveWhitelist 移除白名单
+    rpc RemoveWhitelist(RemoveWhitelistReq) returns (ExperimentRsp) {}
+    // QueryWhitelist 查询白名单
+    rpc QueryWhitelist(QueryWhitelistReq) returns (QueryWhitelistRsp) {}
+    // QueryAssignments 查询分配记录
+    rpc QueryAssignments(QueryAssignmentsReq) returns (QueryAssignmentsRsp) {}
+    // QueryExperimentMetrics 实时指标 + 显著性检验
+    rpc QueryExperimentMetrics(QueryExperimentMetricsReq) returns (QueryExperimentMetricsRsp) {}
+    // QueryMetricSnapshots 查询每日累计快照
+    rpc QueryMetricSnapshots(QueryMetricSnapshotsReq) returns (QueryMetricSnapshotsRsp) {}
+    // CalculateSampleSize 样本量与实验周期估算
+    rpc CalculateSampleSize(CalculateSampleSizeReq) returns (CalculateSampleSizeRsp) {}
+    // QueryMetricDefs 按平台查询指标定义目录（管理端指标配置选择用）
+    rpc QueryMetricDefs(QueryMetricDefsReq) returns (QueryMetricDefsRsp) {}
+    // AddMetricDef 创建指标定义（仅超管，generic_event 模板需服务端白名单校验）
+    rpc AddMetricDef(AddMetricDefReq) returns (MetricDefRsp) {}
+    // UpdateMetricDef 更新指标定义（仅超管，含启用/停用）
+    rpc UpdateMetricDef(UpdateMetricDefReq) returns (MetricDefRsp) {}
+}
+
+message VariantInfo {
+    int32 variantID = 1; // 分组编号
+    string variantName = 2; // 分组名，如 control / B0 / M1
+    bool isControl = 3; // 是否对照组
+    int32 weightPermille = 4; // 流量权重（千分比），同实验各组之和 = 1000
+    string params = 5; // 分组参数 JSON 字符串，如 {"poiEnabled":true,"poiWeight":0.2}
+    string description = 6; // 分组说明
+}
+
+message ExperimentInfo {
+    int32 experimentID = 1; // 实验编号
+    string experimentCode = 2; // 实验唯一标识，如 exp-oj-poi-20261010
+    string experimentName = 3; // 实验名称
+    string description = 4; // 实验描述
+    string scene = 5; // 场景，如 rcmd_recommendation
+    int32 status = 6; // 状态：0草稿 1运行中 2已暂停 3已结束
+    int32 trafficPercent = 7; // 进入实验的流量百分比，1-100
+    string hashSalt = 8; // 分流哈希盐
+    string startTime = 9; // 开始时间
+    string endTime = 10; // 计划结束时间
+    string actualFinishTime = 11; // 实际结束时间
+    string metricConfig = 12; // 指标配置 JSON：primary / guardrail
+    int32 confidence = 13; // 置信水平，百分比，默认 95
+    int32 power = 14; // 统计功效，百分比，默认 80
+    int32 minSamplePerVariant = 15; // 每组最小样本量
+    repeated VariantInfo variants = 16; // 分组列表
+    int32 createdBy = 17; // 创建人
+    string createdTime = 18; // 创建时间
+    string updatedTime = 19; // 更新时间
+    string platformCode = 20; // 平台代码，如 oj，创建后不可改
+}
+
+message AssignReq {
+    int32 experimentID = 1; // 实验编号
+    int32 userID = 2; // 用户编号
+    string platform = 3; // 平台代码，如 oj；OJ 网关固定，其他平台填自身代码
+}
+
+message AssignBySceneReq {
+    string scene = 1; // 场景
+    int32 userID = 2; // 用户编号
+    string platform = 3; // 平台代码，如 oj
+}
+
+message AssignmentInfo {
+    int32 experimentID = 1; // 实验编号
+    string experimentCode = 2; // 实验唯一标识
+    bool assigned = 3; // 是否进入实验，false 表示未命中流量或实验未运行
+    int32 variantID = 4; // 分组编号
+    string variantName = 5; // 分组名
+    bool isControl = 6; // 是否对照组
+    string params = 7; // 分组参数 JSON 字符串
+    int32 bucket = 8; // 分桶编号，0-999
+    int32 source = 9; // 来源：1哈希 2白名单 3手动
+}
+
+message AssignRsp {
+    string message = 1; // 返回信息
+    int32 code = 2; // 返回码
+    bool fallback = 3; // true 表示平台降级，调用方应使用默认配置
+    repeated AssignmentInfo assignments = 4; // 分配结果
+}
+
+message ReportExposureReq {
+    int32 experimentID = 1; // 实验编号
+    int32 userID = 2; // 用户编号
+    string scene = 3; // 场景
+    string reporter = 4; // 调用服务名，如 oj_rmcd_svr
+    string platform = 5; // 平台代码，如 oj
+}
+
+message ReportExposureRsp {
+    string message = 1; // 返回信息
+    int32 code = 2; // 返回码
+    bool reported = 3; // 是否已写入上报链路
+    bool isFirst = 4; // 是否本次首次曝光
+}
+
+message AddExperimentReq {
+    int32 userID = 1; // 操作人
+    string experimentName = 2; // 实验名称
+    string description = 3; // 实验描述
+    string scene = 4; // 场景
+    int32 trafficPercent = 5; // 流量百分比，1-100
+    string startTime = 6; // 开始时间
+    string endTime = 7; // 计划结束时间
+    string metricConfig = 8; // 指标配置 JSON
+    int32 confidence = 9; // 置信水平，默认 95
+    int32 power = 10; // 统计功效，默认 80
+    int32 minSamplePerVariant = 11; // 每组最小样本量
+    repeated VariantInfo variants = 12; // 分组列表，至少 1 个，且恰好 1 个 isControl
+    string platformCode = 13; // 平台代码，如 oj，须为已注册的启用平台
+}
+
+message UpdateExperimentReq {
+    int32 experimentID = 1; // 实验编号
+    int32 userID = 2; // 操作人
+    string experimentName = 3; // 实验名称
+    string description = 4; // 实验描述
+    int32 trafficPercent = 5; // 流量百分比
+    string startTime = 6; // 开始时间
+    string endTime = 7; // 计划结束时间
+    string metricConfig = 8; // 指标配置 JSON
+    int32 confidence = 9; // 置信水平
+    int32 power = 10; // 统计功效
+    int32 minSamplePerVariant = 11; // 每组最小样本量
+    repeated VariantInfo variants = 12; // 分组列表，整体覆盖
+}
+
+message UpdateExperimentStatusReq {
+    int32 experimentID = 1; // 实验编号
+    int32 status = 2; // 目标状态：1启动 2暂停 3结束
+    int32 userID = 3; // 操作人
+}
+
+message ExperimentRsp {
+    string message = 1; // 返回信息
+    int32 code = 2; // 返回码
+    int32 experimentID = 3; // 实验编号
+}
+
+message QueryExperimentsReq {
+    int32 page = 1; // 页码，从 1 开始
+    int32 limit = 2; // 页大小
+    string scene = 3; // 场景过滤，空表示不过滤
+    int32 status = 4; // 状态过滤，-1 表示不过滤
+    int32 userID = 5; // 查询人
+    string platformCode = 6; // 平台代码过滤，空表示全部（跨平台仅超管）
+}
+
+message QueryExperimentsRsp {
+    string message = 1; // 返回信息
+    int32 code = 2; // 返回码
+    repeated ExperimentInfo experiments = 3; // 实验列表
+    int32 total = 4; // 总数
+}
+
+message QueryExperimentReq {
+    int32 experimentID = 1; // 实验编号
+    int32 userID = 2; // 查询人
+}
+
+message QueryExperimentRsp {
+    string message = 1; // 返回信息
+    int32 code = 2; // 返回码
+    ExperimentInfo experiment = 3; // 实验详情
+}
+
+message WhitelistItem {
+    int32 user = 1; // 用户编号
+    int32 variantID = 2; // 强制分组编号
+    string description = 3; // 备注
+}
+
+message AddWhitelistReq {
+    int32 experimentID = 1; // 实验编号
+    repeated WhitelistItem items = 2; // 白名单列表
+    int32 userID = 3; // 操作人
+}
+
+message RemoveWhitelistReq {
+    int32 experimentID = 1; // 实验编号
+    repeated int32 user = 2; // 用户编号列表
+    int32 userID = 3; // 操作人
+}
+
+message QueryWhitelistReq {
+    int32 experimentID = 1; // 实验编号
+    int32 page = 2; // 页码
+    int32 limit = 3; // 页大小
+}
+
+message QueryWhitelistRsp {
+    string message = 1; // 返回信息
+    int32 code = 2; // 返回码
+    repeated WhitelistItem items = 3; // 白名单列表
+    int32 total = 4; // 总数
+}
+
+message QueryAssignmentsReq {
+    int32 experimentID = 1; // 实验编号
+    int32 userID = 2; // 用户编号过滤，0 表示不过滤
+    int32 variantID = 3; // 分组过滤，0 表示不过滤
+    int32 page = 4; // 页码
+    int32 limit = 5; // 页大小
+}
+
+message AssignmentRecord {
+    int32 experimentID = 1; // 实验编号
+    int32 userID = 2; // 用户编号
+    int32 variantID = 3; // 分组编号
+    string variantName = 4; // 分组名
+    int32 bucket = 5; // 分桶编号
+    int32 source = 6; // 来源：1哈希 2白名单 3手动
+    string assignedTime = 7; // 分配时间
+}
+
+message QueryAssignmentsRsp {
+    string message = 1; // 返回信息
+    int32 code = 2; // 返回码
+    repeated AssignmentRecord records = 3; // 分配记录
+    int32 total = 4; // 总数
+}
+
+message QueryExperimentMetricsReq {
+    int32 experimentID = 1; // 实验编号
+    string startTime = 2; // 统计开始时间，缺省为实验开始时间
+    string endTime = 3; // 统计结束时间，缺省为当前时间
+    bool withSignificance = 4; // 是否返回显著性检验
+}
+
+message VariantMetric {
+    string metricName = 1; // 指标 key，如 rcmd_ctr
+    double value = 2; // 指标值
+    int64 numerator = 3; // 分子（比例类指标）
+    int64 denominator = 4; // 分母（比例类指标）
+    int32 userCount = 5; // 参与用户数
+}
+
+message SignificanceResult {
+    string metricName = 1; // 指标 key
+    double pValue = 2; // p 值
+    double relativeLift = 3; // 相对提升，(处理组-对照组)/对照组
+    double liftCI95Lower = 4; // 相对提升 95% 置信区间下界
+    double liftCI95Upper = 5; // 相对提升 95% 置信区间上界
+    bool significant = 6; // 是否显著
+}
+
+message VariantResult {
+    int32 variantID = 1; // 分组编号
+    string variantName = 2; // 分组名
+    bool isControl = 3; // 是否对照组
+    int32 userCount = 4; // 首曝用户数
+    repeated VariantMetric metrics = 5; // 各指标值
+    repeated SignificanceResult significance = 6; // 相对对照组的显著性，对照组为空
+    bool insufficientSample = 7; // 样本量是否不足
+}
+
+message QueryExperimentMetricsRsp {
+    string message = 1; // 返回信息
+    int32 code = 2; // 返回码
+    repeated VariantResult variants = 3; // 各分组结果
+    string queryTime = 4; // 查询时间
+    bool fromCache = 5; // 是否命中缓存
+}
+
+message QueryMetricSnapshotsReq {
+    int32 experimentID = 1; // 实验编号
+    string startDate = 2; // 起始日期，YYYY-MM-DD，缺省为实验开始日
+    string endDate = 3; // 结束日期，YYYY-MM-DD，缺省为昨日
+}
+
+message MetricSnapshot {
+    int32 variantID = 1; // 分组编号
+    string variantName = 2; // 分组名
+    string statDate = 3; // 统计日期（快照基准日）
+    string metricName = 4; // 指标 key
+    double value = 5; // 指标值
+    int64 numerator = 6; // 分子
+    int64 denominator = 7; // 分母
+    int32 userCount = 8; // 首曝用户数
+}
+
+message QueryMetricSnapshotsRsp {
+    string message = 1; // 返回信息
+    int32 code = 2; // 返回码
+    repeated MetricSnapshot snapshots = 3; // 快照列表
+}
+
+message CalculateSampleSizeReq {
+    string metricType = 1; // ratio | mean
+    double baselineValue = 2; // 对照组基线值，ratio 为基线比率，mean 为基线均值
+    double relativeMde = 3; // 最小可检测相对差异，如 0.05 表示 5%
+    double absoluteMde = 4; // 最小可检测绝对差异，与 relativeMde 二选一
+    double baselineStd = 5; // mean 指标的基线标准差，ratio 指标不用
+    int32 confidence = 6; // 置信水平，默认 95
+    int32 power = 7; // 统计功效，默认 80
+    double dailyNewUsers = 8; // 日均新增曝光用户数，用于估算实验天数
+}
+
+message CalculateSampleSizeRsp {
+    string message = 1; // 返回信息
+    int32 code = 2; // 返回码
+    int64 samplePerGroup = 3; // 每组所需样本量
+    double totalDays = 4; // 按日均新增曝光用户估算的实验天数
+    string formula = 5; // 使用的公式说明
+}
+
+message MetricDefInfo {
+    int32 metricDefID = 1; // 指标定义编号
+    string platformCode = 2; // 平台代码
+    string metricKey = 3; // 指标 key，平台内唯一
+    string displayName = 4; // 指标展示名
+    string metricType = 5; // 指标类型：ratio | mean | count
+    string sourceMode = 6; // 来源模式：builtin（SQL 固定于代码） | generic_event（def_json 模板）
+    string defJson = 7; // 指标定义 JSON
+    string description = 8; // 指标说明
+    int32 sortOrder = 9; // 排序号
+    bool enable = 10; // 是否启用
+}
+
+message QueryMetricDefsReq {
+    string platformCode = 1; // 平台代码
+}
+
+message QueryMetricDefsRsp {
+    string message = 1; // 返回信息
+    int32 code = 2; // 返回码
+    repeated MetricDefInfo metrics = 3; // 指标定义列表（按 sort_order 排序）
+}
+
+message AddMetricDefReq {
+    int32 userID = 1; // 操作人
+    string platformCode = 2; // 平台代码
+    string metricKey = 3; // 指标 key，平台内唯一，小写字母+下划线
+    string displayName = 4; // 指标展示名
+    string metricType = 5; // ratio | mean | count
+    string sourceMode = 6; // builtin | generic_event
+    string defJson = 7; // 指标定义 JSON，generic_event 模板结构见 6.2
+    string description = 8; // 指标说明
+    int32 sortOrder = 9; // 排序号
+}
+
+message UpdateMetricDefReq {
+    int32 userID = 1; // 操作人
+    int32 metricDefID = 2; // 指标定义编号
+    string displayName = 3; // 指标展示名
+    string defJson = 4; // 指标定义 JSON
+    string description = 5; // 指标说明
+    int32 sortOrder = 6; // 排序号
+    int32 enable = 7; // -1删除 / 0停用 / 1启用；停用后运行中实验不受影响，新实验不可再引用
+}
+
+message MetricDefRsp {
+    string message = 1; // 返回信息
+    int32 code = 2; // 返回码
+    int32 metricDefID = 3; // 指标定义编号
+}
