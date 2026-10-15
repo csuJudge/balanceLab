@@ -1,5 +1,5 @@
 syntax = "proto3";
-option go_package = "github.com/csuJudge/balanceLab/balanceLab";
+option go_package = "github.com/csuJudge/lab/balanceLab";
 
 package oj.balancelab;
 
