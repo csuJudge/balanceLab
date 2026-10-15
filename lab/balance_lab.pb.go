@@ -4,7 +4,7 @@
 // 	protoc        v5.29.3
 // source: balance_lab.proto
 
-package lab
+package balanceLab
 
 import (
 	reflect "reflect"
@@ -3526,7 +3526,7 @@ const file_balance_lab_proto_rawDesc = "" +
 	"\x13CalculateSampleSize\x12%.oj.balancelab.CalculateSampleSizeReq\x1a%.oj.balancelab.CalculateSampleSizeRsp\"\x00\x12Y\n" +
 	"\x0fQueryMetricDefs\x12!.oj.balancelab.QueryMetricDefsReq\x1a!.oj.balancelab.QueryMetricDefsRsp\"\x00\x12M\n" +
 	"\fAddMetricDef\x12\x1e.oj.balancelab.AddMetricDefReq\x1a\x1b.oj.balancelab.MetricDefRsp\"\x00\x12S\n" +
-	"\x0fUpdateMetricDef\x12!.oj.balancelab.UpdateMetricDefReq\x1a\x1b.oj.balancelab.MetricDefRsp\"\x00B\x10Z\x0ebalanceLab/labb\x06proto3"
+	"\x0fUpdateMetricDef\x12!.oj.balancelab.UpdateMetricDefReq\x1a\x1b.oj.balancelab.MetricDefRsp\"\x00B+Z)github.com/csuJudge/balanceLab/balanceLabb\x06proto3"
 
 var (
 	file_balance_lab_proto_rawDescOnce sync.Once
